@@ -1,4 +1,4 @@
-#N canvas 615 255 450 300 10;
+#N canvas 604 218 544 481 10;
 #X obj 141 79 netreceive 8000;
 #X obj 69 144 print STUFF;
 #X obj 167 138 unpack f f f f f f f f f f f f f f f f;
@@ -18,6 +18,13 @@
 #X floatatom 383 198 5 0 0 0 - - -;
 #X floatatom 398 224 5 0 0 0 - - -;
 #X floatatom 408 246 5 0 0 0 - - -;
+#X obj 86 370 route hello world;
+#X obj 33 409 print out1;
+#X obj 182 425 print out3;
+#X obj 116 407 print out2;
+#X msg 36 310 hello alice;
+#X msg 84 333 hello bob;
+#X msg 190 328 world peace;
 #X connect 0 0 2 0;
 #X connect 0 0 1 0;
 #X connect 2 0 3 0;
@@ -36,3 +43,9 @@
 #X connect 2 13 16 0;
 #X connect 2 14 17 0;
 #X connect 2 15 18 0;
+#X connect 19 0 20 0;
+#X connect 19 1 22 0;
+#X connect 19 2 21 0;
+#X connect 23 0 19 0;
+#X connect 24 0 19 0;
+#X connect 25 0 19 0;
