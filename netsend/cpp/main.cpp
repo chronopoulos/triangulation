@@ -23,13 +23,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include "lo/lo.h"
 
 
 using namespace std;
 
-static lo_address pd = lo_address_new(NULL, "8000");
-//static lo_address pd = lo_address_new("10.1.13.139", "8000");
 static mcp3008Spi adc0("/dev/spidev0.0", SPI_MODE_0, 1000000, 8);
 static mcp3008Spi adc1("/dev/spidev0.1", SPI_MODE_0, 1000000, 8);
 
@@ -92,6 +89,8 @@ void takeBoardSample(void)
     int tmpVal = 0;
     unsigned int i;
 
+    cout << "bs ";
+
     for (i=0; i<8; i++) {
         data[0] = 1;            // start bit
         data[1] = 0b10000000 | (i << 4);   // single ended, channel i
@@ -109,8 +108,6 @@ void takeBoardSample(void)
         cout << tmpVal << " ";
     }
 
-    cout << "  ";
-    
     for (i=0; i<8; i++) {
         data[0] = 1;            // start bit
         data[1] = 0b10000000 | (i << 4);   // single ended, channel i
@@ -128,7 +125,7 @@ void takeBoardSample(void)
         cout << tmpVal << " ";
     }
 
-    cout << endl;
+    cout << ";" << endl;
 
 }
 
@@ -199,15 +196,12 @@ void calculate_cof(void)
 }
 
 
-void sendOSC(void)
+void sendCOF(void)
 {
     if (cofSwitch and !cofSent){
-        lo_send(pd, "/cof", "i", cof);
+        cout << "cof " << cof << ";" << endl;
         cofSent = 1;
     }
-
-    lo_send(pd, "/photodiode", "iiiiiiiiiiiiiiii", bs[0], bs[1], bs[2], bs[3], bs[4], bs[5], bs[6], bs[7],
-                                                    bs[8], bs[9], bs[10], bs[11], bs[12], bs[13], bs[14], bs[15]);
 }
 
 
@@ -219,7 +213,7 @@ int main(void)
 
         takeBoardSample();
         calculate_cof();
-        sendOSC();
+        sendCOF();
         usleep(30000); // 30 ms
     }
 
