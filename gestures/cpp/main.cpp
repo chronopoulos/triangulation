@@ -68,7 +68,7 @@ int main(void)
         diff1 = channel0_minus2 - channel0_minus1;
         diff2 = channel0_minus1 - channel0;
         if ((diff1 > threshold1) && (diff2 < threshold2)){
-            cout << "hit: " << diff1 << " " << diff2 << endl;
+            cout << "hit " << diff1 << " " << diff2 << ";" << endl;
         }
         usleep(30000); // 30 ms
     }
