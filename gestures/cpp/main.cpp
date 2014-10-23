@@ -60,7 +60,7 @@ int main(void)
 {
 
     threshold1 = 20;
-    threshold2 = -20;
+    threshold2 = -5;
 
     while(1){
 
