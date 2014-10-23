@@ -32,6 +32,11 @@ static int cofSent=0;
 static int hitThreshold1 = 20;
 static int hitThreshold2 = -5;
 
+// scale
+static int scale[] =   {0, 2, 4, 7, 9,
+                        12, 14, 16, 19, 21,
+                        24, 26, 28, 31, 33, 36};
+
 void calibrate(void)
 {
 
@@ -152,7 +157,7 @@ void calculateHits(void)
         diff1 = tripleBuffer[iMinus2][i] - tripleBuffer[iMinus1][i];
         diff2 = tripleBuffer[iMinus1][i] - tripleBuffer[iCurrent][i];
         if ( (diff1 > hitThreshold1) && (diff2 < hitThreshold2) ){
-            cout << "hit " << i << " " << diff1 << ";" << endl;
+            cout << "hit " << scale[i] << " " << diff1 << ";" << endl;
         }
     }
 
