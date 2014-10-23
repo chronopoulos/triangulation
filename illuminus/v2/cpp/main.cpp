@@ -18,10 +18,9 @@ static mcp3008Spi adc1("/dev/spidev0.1", SPI_MODE_0, 1000000, 8);
 // board sample structures
 static int calibration[16];
 static int droneThreshold[16];
-static int tripleBuffer[3][16];
+static int doubleBuffer[2][16];
 static unsigned int iCurrent=2;
 static unsigned int iMinus1=1;
-static unsigned int iMinus2=0;
 
 // cof = 'circle of fifths'
 static int cof=0;
@@ -31,6 +30,8 @@ static int cofSent=0;
 // hits
 static int hitThreshold1 = 20;
 static int hitThreshold2 = -5;
+static int potentialHitChan = -1;
+static int potentialHitVel = 0;
 
 // scale
 static int scale[] =   {0, 2, 4, 7, 9,
@@ -97,7 +98,7 @@ void takeBoardSample(void)
         if ((calibration[i] - tmpVal) < droneThreshold[i]){
             tmpVal = 1023;
         }
-        tripleBuffer[iCurrent][i] = tmpVal;
+        doubleBuffer[iCurrent][i] = tmpVal;
     }
 
     for (i=0; i<8; i++) {
@@ -113,7 +114,7 @@ void takeBoardSample(void)
         if ((calibration[8+i] - tmpVal) < droneThreshold[i]){
             tmpVal = 1023;
         }
-        tripleBuffer[iCurrent][8+i] = tmpVal;
+        doubleBuffer[iCurrent][8+i] = tmpVal;
     }
 
 }
@@ -123,7 +124,7 @@ int minOfBoardSample(void)
     int tmp, i;
     int min=1024;
     for (i=0; i<16; i++){
-        tmp = tripleBuffer[iCurrent][i];
+        tmp = doubleBuffer[iCurrent][i];
         if (tmp<min){
             min = tmp;
         }
@@ -147,23 +148,6 @@ void calculate_cof(void)
     }
 }
 
-void calculateHits(void)
-{
-    int i, diff1, diff2;
-
-    for (i=0; i<16; i++){
-        // this is calculating each diff twice
-        // to save cycles, maintain a buffer
-        diff1 = tripleBuffer[iMinus2][i] - tripleBuffer[iMinus1][i];
-        diff2 = tripleBuffer[iMinus1][i] - tripleBuffer[iCurrent][i];
-        if ( (diff1 > hitThreshold1) && (diff2 < hitThreshold2) ){
-            cout << "hit " << scale[i] << " " << diff1 << ";" << endl;
-        }
-    }
-
-}
-
-
 void sendCOF(void)
 {
     if (cofSwitch and !cofSent){
@@ -172,21 +156,53 @@ void sendCOF(void)
     }
 }
 
+void followUpPotentialHits(void)
+{
+    if (potentialHitChan > 0) {
+        int diff = doubleBuffer[iMinus1][potentialHitChan] - doubleBuffer[iCurrent][potentialHitChan];
+        if (diff < hitThreshold2){
+            cout << "hit " << scale[potentialHitChan] << " " << potentialHitVel << ";" << endl;
+        }
+    }
+
+}
+
+void findPotentialHits(void)
+{
+    int i, diff;
+    int currentMax=0;
+
+    potentialHitChan = -1;
+
+    for (i=0; i<16; i++) {
+        diff = doubleBuffer[iMinus1][i] - doubleBuffer[iCurrent][i];
+        if ( (diff > hitThreshold1) && (diff > currentMax) ) {
+            potentialHitChan = i;
+            currentMax = diff;
+        }
+    }
+
+    potentialHitVel = currentMax;
+    // if no threshold crossings are detected, you'll have
+    //   potentialHitChan = -1 and currentMax = 0
+}
+
 void sendBoardSample(void)
 {
     int i;
     cout << "bs ";
     for (i=0; i<16; i++){
-        cout << tripleBuffer[iCurrent][i] << " ";
+        cout << doubleBuffer[iCurrent][i] << " ";
     }
     cout << ";" << endl;
 }
 
 void cycleIndices(void)
 {
-    iCurrent = (iCurrent+1) % 3;
-    iMinus1 = (iMinus1+1) % 3;
-    iMinus2 = (iMinus2+1) % 3;
+    // for 2nd order, could just do logical negation,
+    //   but this is more general to higher-order buffering
+    iCurrent = (iCurrent+1) % 2;
+    iMinus1 = (iMinus1+1) % 2;
 }
 
 
@@ -197,9 +213,10 @@ int main(void)
     while(1){
         takeBoardSample();
         calculate_cof();
-        calculateHits();
         sendCOF();
         sendBoardSample();
+        followUpPotentialHits();
+        findPotentialHits();
         cycleIndices();
         usleep(30000); // 30 ms
     }
