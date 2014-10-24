@@ -1,5 +1,5 @@
 CC = g++
-FLAGS = -Wall
+FLAGS = -Wall -O3
 
 all:
 	$(CC) $(FLAGS) main.cpp mcp3008Spi.cpp -o main

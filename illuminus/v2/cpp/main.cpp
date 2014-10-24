@@ -7,6 +7,7 @@ Chris Chronopoulos, 20141022
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <time.h>
 
 
 using namespace std;
@@ -28,15 +29,22 @@ static int cofSwitch=0;
 static int cofSent=0;
 
 // hits
-static int hitThreshold1 = 20;
-static int hitThreshold2 = -5;
-static int potentialHitChan = -1;
-static int potentialHitVel = 0;
+static int hitThreshold1 = 10;
+static int hitThreshold2 = -3;
+static int potentialHitChanL = -1;
+static int potentialHitVelL = 0;
+static int potentialHitChanR = -1;
+static int potentialHitVelR = 0;
 
 // scale
 static int scale[] =   {0, 2, 4, 7, 9,
                         12, 14, 16, 19, 21,
                         24, 26, 28, 31, 33, 36};
+
+// spatial harmonics
+static float aveL, aveR;
+static float rollL, rollR;
+static float yawL, yawR;
 
 void calibrate(void)
 {
@@ -158,10 +166,19 @@ void sendCOF(void)
 
 void followUpPotentialHits(void)
 {
-    if (potentialHitChan > 0) {
-        int diff = doubleBuffer[iMinus1][potentialHitChan] - doubleBuffer[iCurrent][potentialHitChan];
+    int diff;
+
+    if (potentialHitChanL > 0) {
+        diff = doubleBuffer[iMinus1][potentialHitChanL] - doubleBuffer[iCurrent][potentialHitChanL];
         if (diff < hitThreshold2){
-            cout << "hit " << scale[potentialHitChan] << " " << potentialHitVel << ";" << endl;
+            cout << "hitL " << scale[potentialHitChanL] << " " << potentialHitVelL << ";" << endl;
+        }
+    }
+
+    if (potentialHitChanR > 0) {
+        diff = doubleBuffer[iMinus1][potentialHitChanR] - doubleBuffer[iCurrent][potentialHitChanR];
+        if (diff < hitThreshold2){
+            cout << "hitR " << scale[potentialHitChanR] << " " << potentialHitVelR << ";" << endl;
         }
     }
 
@@ -169,22 +186,95 @@ void followUpPotentialHits(void)
 
 void findPotentialHits(void)
 {
-    int i, diff;
-    int currentMax=0;
+    int i, diff, currentMax;
 
-    potentialHitChan = -1;
-
-    for (i=0; i<16; i++) {
+    potentialHitChanL = -1;
+    currentMax = 0;
+    for (i=0; i<8; i++) {
         diff = doubleBuffer[iMinus1][i] - doubleBuffer[iCurrent][i];
         if ( (diff > hitThreshold1) && (diff > currentMax) ) {
-            potentialHitChan = i;
+            potentialHitChanL = i;
             currentMax = diff;
         }
     }
+    potentialHitVelL = currentMax;
 
-    potentialHitVel = currentMax;
-    // if no threshold crossings are detected, you'll have
-    //   potentialHitChan = -1 and currentMax = 0
+    potentialHitChanR = -1;
+    currentMax = 0;
+    for (i=8; i<16; i++) {
+        diff = doubleBuffer[iMinus1][i] - doubleBuffer[iCurrent][i];
+        if ( (diff > hitThreshold1) && (diff > currentMax) ) {
+            potentialHitChanR = i;
+            currentMax = diff;
+        }
+    }
+    potentialHitVelR = currentMax;
+}
+
+void computeHarmonics(void)
+{
+    int i, tmp;
+
+    // ave
+
+        tmp=0;
+        for (i=0; i<8; i++){
+            tmp += doubleBuffer[iCurrent][i];
+        }
+        aveL = tmp / 8.;
+
+        tmp=0;
+        for (i=8; i<16; i++){
+            tmp += doubleBuffer[iCurrent][i];
+        }
+        aveR = tmp / 8.;
+
+    cout << "aves " << aveL << " " << aveR << ";" << endl;
+
+    // roll
+
+        tmp = 0;
+        for (i=0; i<8; i+=2){
+            tmp += doubleBuffer[iCurrent][i];
+        }
+        for (i=1; i<8; i+=2){
+            tmp -= doubleBuffer[iCurrent][i];
+        }
+        rollL = tmp / 8.;
+
+        tmp = 0;
+        for (i=8; i<16; i+=2){
+            tmp += doubleBuffer[iCurrent][i];
+        }
+        for (i=9; i<16; i+=2){
+            tmp -= doubleBuffer[iCurrent][i];
+        }
+        rollR = tmp / 8.;
+
+        cout << "rolls " << rollL << " " << rollR << ";" << endl;
+
+    // yaw
+
+        tmp = 0;
+        for (i=0; i<4; i++){
+            tmp += doubleBuffer[iCurrent][i];
+        }
+        for (i=4; i<8; i++){
+            tmp -= doubleBuffer[iCurrent][i];
+        }
+        yawL = tmp / 8.;
+
+        tmp = 0;
+        for (i=8; i<12; i++){
+            tmp += doubleBuffer[iCurrent][i];
+        }
+        for (i=12; i<16; i++){
+            tmp -= doubleBuffer[iCurrent][i];
+        }
+        yawR = tmp / 8.;
+
+        cout << "yaws " << yawL << " " << yawR << ";" << endl;
+
 }
 
 void sendBoardSample(void)
@@ -209,17 +299,40 @@ void cycleIndices(void)
 int main(void)
 {
 
+    int i;
+    time_t t1, t2;
+    double seconds;
+
     calibrate();
-    while(1){
+
+    // warm up
+    for (int i=0; i<4; i++){
         takeBoardSample();
+        cycleIndices();
+    }
+
+    while(1){
+    time(&t1);
+    //for (i=0; i<1000; i++){
+
+        takeBoardSample();
+
         calculate_cof();
         sendCOF();
+
         sendBoardSample();
+
+        computeHarmonics();
+
         followUpPotentialHits();
         findPotentialHits();
+
         cycleIndices();
-        usleep(30000); // 30 ms
+        usleep(15000); // 15 ms
     }
+    time(&t2);
+    seconds = difftime(t2,t1);
+    cout << "Time elapsed in seconds: " << seconds << endl;
 
     return 0;
 
