@@ -1,4 +1,4 @@
-#N canvas 129 141 1138 569 10;
+#N canvas 129 142 1138 569 10;
 #X obj 609 31 loadbang;
 #X obj 609 52 delay 100;
 #X msg 609 76 \; pd dsp 1;
@@ -62,6 +62,7 @@
 #X obj 43 246 s FMharmonic;
 #X obj 629 381 expr 512+$f1*3;
 #X obj 779 391 expr 512+$f1*3;
+#X obj 739 466 dac~;
 #X connect 0 0 1 0;
 #X connect 1 0 2 0;
 #X connect 3 0 7 1;
@@ -135,6 +136,8 @@
 #X connect 39 0 40 0;
 #X connect 40 0 42 0;
 #X connect 41 0 40 1;
+#X connect 42 0 62 0;
+#X connect 42 0 62 1;
 #X connect 43 0 38 0;
 #X connect 44 0 39 1;
 #X connect 45 0 51 0;
