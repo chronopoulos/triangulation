@@ -172,6 +172,9 @@ void followUpPotentialHits(void)
         diff = doubleBuffer[iMinus1][potentialHitChanL] - doubleBuffer[iCurrent][potentialHitChanL];
         if (diff < hitThreshold2){
             cout << "hitL " << scale[potentialHitChanL] << " " << potentialHitVelL << ";" << endl;
+            if (aveR < 20.){
+                cout << "modeselektor bang;" << endl;
+            }
         }
     }
 
@@ -179,7 +182,7 @@ void followUpPotentialHits(void)
         diff = doubleBuffer[iMinus1][potentialHitChanR] - doubleBuffer[iCurrent][potentialHitChanR];
         if (diff < hitThreshold2){
             cout << "hitR " << scale[potentialHitChanR] << " " << potentialHitVelR << ";" << endl;
-            if (aveL < 10.){
+            if (aveL < 20.){
                 cout << "modeselektor bang;" << endl;
             }
         }
