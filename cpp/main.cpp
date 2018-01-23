@@ -1,5 +1,5 @@
 /*
-Sensor-polling script for Triangulation, Illuminus version
+Sensor-polling script for Triangulation
 Chris Chronopoulos, 20141022
 */
 
@@ -9,6 +9,10 @@ Chris Chronopoulos, 20141022
 #include <unistd.h>
 #include <time.h>
 
+#include <bcm2835.h>
+
+#define GPIO_LEFT RPI_GPIO_P1_07
+#define GPIO_RIGHT RPI_GPIO_P1_11
 
 using namespace std;
 
@@ -16,12 +20,9 @@ using namespace std;
 static mcp3008Spi adc0("/dev/spidev0.0", SPI_MODE_0, 1000000, 8);
 static mcp3008Spi adc1("/dev/spidev0.1", SPI_MODE_0, 1000000, 8);
 
-// board sample structures
-static int calibration[16];
-static int droneThreshold[16];
-static int doubleBuffer[2][16];
-static unsigned int iCurrent=2;
-static unsigned int iMinus1=1;
+// doubleBuffer indices
+static unsigned int iCurrent=1;
+static unsigned int iMinus1=0;
 
 // cof = 'circle of fifths'
 static int cof=0;
@@ -42,13 +43,34 @@ static int scale[] =   {0, 2, 4, 7, 9,
                         24, 26, 28, 31, 33, 36};
 
 // spatial harmonics
-static float aveL, aveR;
-static float rollL, rollR;
-static float yawL, yawR;
+static float aveL = 1023;
+static float aveR = 1023;
+static float rollL = 0;
+static float rollR = 0;
+static float yawL = 0;
+static float yawR = 0;
 
-void calibrate(void)
+
+
+void cookData(int* bg, int* raw, int* cooked, int threshFactor)
 {
 
+    int diff, i;
+    for (i=0; i<16; i++) {
+        diff = bg[i] - raw[i];
+        if ( diff < (bg[i]/threshFactor) ) {
+            cooked[i] = 1023;
+        } else {
+            //cooked[i] = raw[i]; // old way
+            cooked[i] = (raw[i] - bg[i]) * 1023 / bg[i] + 1023; // new scaling
+        }
+    }
+
+}
+
+void takeBoardSample(int *buffer)
+/* assumes buffer is a 16-element int array */
+{
     unsigned char data[3];
     int tmpVal = 0;
     unsigned int i;
@@ -63,50 +85,7 @@ void calibrate(void)
         tmpVal &= 0b00000011;
         tmpVal <<= 8;
         tmpVal |= data[2];
-
-        calibration[i] = tmpVal;
-        droneThreshold[i] = tmpVal/26;   // ~30 for calibration=800
-    }
-
-    
-    for (i=0; i<8; i++) {
-        data[0] = 1;            // start bit
-        data[1] = 0b10000000 | (i << 4);   // single ended, channel i
-        data[2] = 0;            // don't care
-        adc1.spiWriteRead(data, sizeof(data) );
-        tmpVal = 0;
-        tmpVal = data[1];
-        tmpVal &= 0b00000011;
-        tmpVal <<= 8;
-        tmpVal |= data[2];
-
-        calibration[8+i] = tmpVal;
-        droneThreshold[8+i] = tmpVal/26;   // ~30 for calibration=800
-    }
-
-}
-
-void takeBoardSample(void)
-{
-
-    unsigned char data[3];
-    int tmpVal = 0;
-    unsigned int i;
-
-    for (i=0; i<8; i++) {
-        data[0] = 1;            // start bit
-        data[1] = 0b10000000 | (i << 4);   // single ended, channel i
-        data[2] = 0;            // don't care
-        adc0.spiWriteRead(data, sizeof(data) );
-        tmpVal = 0;
-        tmpVal = data[1];
-        tmpVal &= 0b00000011;
-        tmpVal <<= 8;
-        tmpVal |= data[2];
-        if ((calibration[i] - tmpVal) < droneThreshold[i]){
-            tmpVal = 1023;
-        }
-        doubleBuffer[iCurrent][i] = tmpVal;
+        buffer[i] = tmpVal;
     }
 
     for (i=0; i<8; i++) {
@@ -119,20 +98,16 @@ void takeBoardSample(void)
         tmpVal &= 0b00000011;
         tmpVal <<= 8;
         tmpVal |= data[2];
-        if ((calibration[8+i] - tmpVal) < droneThreshold[i]){
-            tmpVal = 1023;
-        }
-        doubleBuffer[iCurrent][8+i] = tmpVal;
+        buffer[8+i] = tmpVal;
     }
-
 }
 
-int minOfBoardSample(void)
+int minOfBoardSample(int* boardSample)
 {
     int tmp, i;
     int min=1024;
     for (i=0; i<16; i++){
-        tmp = doubleBuffer[iCurrent][i];
+        tmp = boardSample[i];
         if (tmp<min){
             min = tmp;
         }
@@ -141,15 +116,15 @@ int minOfBoardSample(void)
     return min;
 }
 
-void calculate_cof(void)
+void calculate_cof(int* boardSample)
 {
     if (cofSwitch) {
-        if (minOfBoardSample() == 1023){
+        if (minOfBoardSample(boardSample) == 1023){
             cofSwitch=0;
             cofSent=0;
         }
     } else {
-        if (minOfBoardSample() < 1023){
+        if (minOfBoardSample(boardSample) < 1023){
             cof = (cof+7) % 12;
             cofSwitch = 1;
         }
@@ -164,12 +139,12 @@ void sendCOF(void)
     }
 }
 
-void followUpPotentialHits(void)
+void followUpPotentialHits(int *doubleBuff)
 {
     int diff;
 
     if (potentialHitChanL > 0) {
-        diff = doubleBuffer[iMinus1][potentialHitChanL] - doubleBuffer[iCurrent][potentialHitChanL];
+        diff = doubleBuff[iMinus1*16+potentialHitChanL] - doubleBuff[iCurrent*16+potentialHitChanL];
         if (diff < hitThreshold2){
             cout << "hitL " << scale[potentialHitChanL] << " " << potentialHitVelL << ";" << endl;
             if (aveR < 20.){
@@ -179,7 +154,7 @@ void followUpPotentialHits(void)
     }
 
     if (potentialHitChanR > 0) {
-        diff = doubleBuffer[iMinus1][potentialHitChanR] - doubleBuffer[iCurrent][potentialHitChanR];
+        diff = doubleBuff[iMinus1*16+potentialHitChanR] - doubleBuff[iCurrent*16+potentialHitChanR];
         if (diff < hitThreshold2){
             cout << "hitR " << scale[potentialHitChanR] << " " << potentialHitVelR << ";" << endl;
             if (aveL < 20.){
@@ -190,14 +165,14 @@ void followUpPotentialHits(void)
 
 }
 
-void findPotentialHits(void)
+void findPotentialHits(int *doubleBuff)
 {
     int i, diff, currentMax;
 
     potentialHitChanL = -1;
     currentMax = 0;
     for (i=0; i<8; i++) {
-        diff = doubleBuffer[iMinus1][i] - doubleBuffer[iCurrent][i];
+        diff = doubleBuff[iMinus1*16+i] - doubleBuff[iCurrent*16+i];
         if ( (diff > hitThreshold1) && (diff > currentMax) ) {
             potentialHitChanL = i;
             currentMax = diff;
@@ -208,7 +183,7 @@ void findPotentialHits(void)
     potentialHitChanR = -1;
     currentMax = 0;
     for (i=8; i<16; i++) {
-        diff = doubleBuffer[iMinus1][i] - doubleBuffer[iCurrent][i];
+        diff = doubleBuff[iMinus1*16+i] - doubleBuff[iCurrent*16+i];
         if ( (diff > hitThreshold1) && (diff > currentMax) ) {
             potentialHitChanR = i;
             currentMax = diff;
@@ -217,7 +192,7 @@ void findPotentialHits(void)
     potentialHitVelR = currentMax;
 }
 
-void computeHarmonics(void)
+void computeHarmonics(int *boardSample)
 {
     int i, tmp;
 
@@ -225,13 +200,13 @@ void computeHarmonics(void)
 
         tmp=0;
         for (i=0; i<8; i++){
-            tmp += doubleBuffer[iCurrent][i];
+            tmp += boardSample[i];
         }
         aveL = tmp / 8.;
 
         tmp=0;
         for (i=8; i<16; i++){
-            tmp += doubleBuffer[iCurrent][i];
+            tmp += boardSample[i];
         }
         aveR = tmp / 8.;
 
@@ -241,19 +216,19 @@ void computeHarmonics(void)
 
         tmp = 0;
         for (i=0; i<8; i+=2){
-            tmp += doubleBuffer[iCurrent][i];
+            tmp += boardSample[i];
         }
         for (i=1; i<8; i+=2){
-            tmp -= doubleBuffer[iCurrent][i];
+            tmp -= boardSample[i];
         }
         rollL = tmp / 8.;
 
         tmp = 0;
         for (i=8; i<16; i+=2){
-            tmp += doubleBuffer[iCurrent][i];
+            tmp += boardSample[i];
         }
         for (i=9; i<16; i+=2){
-            tmp -= doubleBuffer[iCurrent][i];
+            tmp -= boardSample[i];
         }
         rollR = tmp / 8.;
 
@@ -263,19 +238,19 @@ void computeHarmonics(void)
 
         tmp = 0;
         for (i=0; i<4; i++){
-            tmp += doubleBuffer[iCurrent][i];
+            tmp += boardSample[i];
         }
         for (i=4; i<8; i++){
-            tmp -= doubleBuffer[iCurrent][i];
+            tmp -= boardSample[i];
         }
         yawL = tmp / 8.;
 
         tmp = 0;
         for (i=8; i<12; i++){
-            tmp += doubleBuffer[iCurrent][i];
+            tmp += boardSample[i];
         }
         for (i=12; i<16; i++){
-            tmp -= doubleBuffer[iCurrent][i];
+            tmp -= boardSample[i];
         }
         yawR = tmp / 8.;
 
@@ -283,12 +258,22 @@ void computeHarmonics(void)
 
 }
 
-void sendBoardSample(void)
+void sendBoardSample(int *boardSample)
 {
     int i;
     cout << "bs ";
     for (i=0; i<16; i++){
-        cout << doubleBuffer[iCurrent][i] << " ";
+        cout << boardSample[i] << " ";
+    }
+    cout << ";" << endl;
+}
+
+void printBackground(int *bg)
+{
+    int i;
+    cout << "bg ";
+    for (i=0; i<16; i++){
+        cout << bg[i] << " ";
     }
     cout << ";" << endl;
 }
@@ -302,42 +287,76 @@ void cycleIndices(void)
 }
 
 
+void toggleLEDs(int on)
+{
+    if (on) {
+        bcm2835_gpio_write(GPIO_LEFT, HIGH);
+        bcm2835_gpio_write(GPIO_RIGHT, HIGH);
+    } else {
+        bcm2835_gpio_write(GPIO_LEFT, LOW);
+        bcm2835_gpio_write(GPIO_RIGHT, LOW);
+    }
+}
+
 int main(void)
 {
 
-    time_t t1, t2;
-    double seconds;
+    // initialize GPIO control
+    if (!bcm2835_init()) return 1;
+    bcm2835_gpio_fsel(GPIO_LEFT, BCM2835_GPIO_FSEL_OUTP);
+    bcm2835_gpio_fsel(GPIO_RIGHT, BCM2835_GPIO_FSEL_OUTP);
 
-    calibrate();
+    // board sample structures
+    int background[16];
+    int rawData[16];
+    int doubleBuffer[32];
 
-    // warm up
+    // warm up (still necessary?)
     for (int i=0; i<4; i++){
-        takeBoardSample();
+        takeBoardSample(rawData);
         cycleIndices();
     }
 
+    // main loop
     while(1){
-    time(&t1);
-    //for (int i=0; i<1000; i++){
 
-        takeBoardSample();
+        toggleLEDs(0);
+        takeBoardSample(background);
+        toggleLEDs(1);
+        takeBoardSample(rawData);
 
-        calculate_cof();
+        cookData(background, rawData, doubleBuffer+iCurrent*16, 26);
+        sendBoardSample(doubleBuffer+iCurrent*16);
+        //printBackground(background);
+
+        calculate_cof(doubleBuffer+iCurrent*16);
         sendCOF();
 
-        sendBoardSample();
+        computeHarmonics(doubleBuffer+iCurrent*16);
 
-        computeHarmonics();
-
-        followUpPotentialHits();
-        findPotentialHits();
+        followUpPotentialHits(doubleBuffer);
+        findPotentialHits(doubleBuffer);
 
         cycleIndices();
         usleep(15000); // 15 ms
     }
+
+    // timing loop
+    /*
+    time_t t1, t2;
+    double seconds;
+    int i;
+    time(&t1);
+    for (i=0; i<10000; i++){
+        toggleLEDs(0);
+        takeBoardSample(background);
+        toggleLEDs(1);
+        takeBoardSample(rawData);
+    } 
     time(&t2);
     seconds = difftime(t2,t1);
     cout << "Time elapsed in seconds: " << seconds << endl;
+    */
 
     return 0;
 
