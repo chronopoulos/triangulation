@@ -1,9 +1,0 @@
-20141014
---------
-
-to flush to buffers: need to delimit with semicolon AND newline!
-
-cout << ";\n"
-cout.flush()
-
-(don't really understand this but whatever)
