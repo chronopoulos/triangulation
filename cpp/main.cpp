@@ -47,8 +47,8 @@ static float aveL = 1023;
 static float aveR = 1023;
 static float rollL = 0;
 static float rollR = 0;
-static float yawL = 0;
-static float yawR = 0;
+static float pitchL = 0;
+static float pitchR = 0;
 
 
 
@@ -234,27 +234,23 @@ void computeHarmonics(int *boardSample)
 
         cout << "rolls " << rollL << " " << rollR << ";" << endl;
 
-    // yaw
+    // pitch
 
         tmp = 0;
-        for (i=0; i<4; i++){
-            tmp += boardSample[i];
-        }
-        for (i=4; i<8; i++){
-            tmp -= boardSample[i];
-        }
-        yawL = tmp / 8.;
+        tmp += -2*(boardSample[0] + boardSample[1])
+        tmp += -1*(boardSample[2] + boardSample[3])
+        tmp +=  1*(boardSample[4] + boardSample[5])
+        tmp +=  2*(boardSample[6] + boardSample[7])
+        pitchL = tmp / 8.;
 
         tmp = 0;
-        for (i=8; i<12; i++){
-            tmp += boardSample[i];
-        }
-        for (i=12; i<16; i++){
-            tmp -= boardSample[i];
-        }
-        yawR = tmp / 8.;
+        tmp += -2*(boardSample[8] + boardSample[9])
+        tmp += -1*(boardSample[10] + boardSample[11])
+        tmp +=  1*(boardSample[12] + boardSample[13])
+        tmp +=  2*(boardSample[14] + boardSample[15])
+        pitchR = tmp / 8.;
 
-        cout << "yaws " << yawL << " " << yawR << ";" << endl;
+        cout << "pitches " << pitchL << " " << pitchR << ";" << endl;
 
 }
 
