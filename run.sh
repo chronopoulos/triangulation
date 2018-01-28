@@ -1,3 +1,3 @@
 #!/bin/bash
 
-/home/ccrma/triangulation/illuminus/v3/cpp/main | pdsend 8000
+/home/ccrma/triangulation/cpp/main | pdsend 8000
